@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from numpy.typing import NDArray
 from mnist_reader import load_mnist
 import numpy as np
 
@@ -16,24 +17,63 @@ class Layer:
         self.matrix = np.random.uniform(-bound, bound, (m, n))
         self.bias = np.random.uniform(-bound, bound, n)
 
-class Model:
-    layers = []
+class Transformer:
+    def forward(self, x) -> NDArray:
+        assert(False)
+    def backward(self, x) -> NDArray:
+        assert(False)
+        
+class Relu(Transformer):
+    prev: NDArray
     
+    def forward(self, x):
+        self.prev = NDArray(x)
+        return np.maximum(x, 0)
+    def backward(self, x):
+        return np.where(self.prev > 0, 1, 0)
+
+class Linear(Transformer):
+    layer: Layer
+    prev: NDArray
+    
+    def __init__(self, layer: Layer):
+        self.layer = layer
+    
+    def forward(self, x):
+        self.prev = NDArray(x)
+        return x @ self.layer.matrix + self.layer.bias
+    def backward(self, x):
+        return x @ self.prev
+ 
+
+class Model:
+    transformers = []
     def __init__(self):
-        self.layers.append(Layer(28*28, 512))
-        self.layers.append(Layer(512, 512))
-        self.layers.append(Layer(512, 10))
+        self.transformers.append(Linear(Layer(28*28, 512)))
+        self.transformers.append(Relu())
+        self.transformers.append(Linear(Layer(512, 512)))
+        self.transformers.append(Relu())
+        self.transformers.append(Linear(Layer(512, 10)))
     
     def run(self, x, layer: Layer):
-        y = linear(layer, x)
-        y = relu(y)
+        for i in range(len(self.transformers)):
+            x = self.transformers[i].forward(x)
+
+        return x
+    
+    def optimize(self, y, y_true):
+        y_soft = softmax(y)
+        err = cross_entropy(y_soft, y_true)
+        b = diff_cel(y_soft, y_true)
         
-        y = linear(self.layers[1], y)
-        y = relu(y)
+        for i in range(len(self.transformers)-1, -1, -1):
+            b = self.transformers[i].backward(b)
+            
         
-        y = linear(self.layers[2], y)
-        return y
         
+        
+def diff_cel(y_soft, y_true):
+    return y_soft - y_true
 
 def relu(x):
     return np.maximum(x, 0)
@@ -46,6 +86,9 @@ def linear(layer: Layer, x):
     
 def softmax(x):
     return np.exp(x) / np.sum(np.exp(x))
+
+def cross_entropy(y, y_true):
+    return -np.sum(y_true * np.log(y))
 
 def loss_fn(res, label):                                
     return np.mean((res - label) ** 2)
