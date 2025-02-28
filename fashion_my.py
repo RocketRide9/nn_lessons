@@ -5,10 +5,13 @@ from mnist_reader import load_mnist
 import numpy as np
 
 STEP_SIZE = 0.002
+BATCH_SIZE = 60
 
 class Layer:
     matrix = None
     bias = None
+    matrix_grad = None
+    bias_grad = None
     
     # матрица mxn
     # m - выходное количество нейронов
@@ -32,7 +35,7 @@ class Relu(Transformer):
         self.prev = x.copy()
         return np.maximum(x, 0)
     def backward(self, x):
-        return x @ np.where(self.prev > 0, 1, 0)
+        return np.where(self.prev > 0, 1, 0) * x
 
 class Linear(Transformer):
     layer: Layer
@@ -45,16 +48,21 @@ class Linear(Transformer):
         self.prev = x.copy()
         return x @ self.layer.matrix + self.layer.bias
     def backward(self, x):
-        dW = np.outer(x, self.prev)
-        db = np.sum(x)
+        prev_exp = np.expand_dims(self.prev, axis=2)
+        x_exp = np.expand_dims(x, axis=1)
+        dW = np.sum(prev_exp @ x_exp, axis=0) / BATCH_SIZE
+        db = np.sum(x, axis=0) / BATCH_SIZE
+
+        dY = x @ self.layer.matrix.T
         self.layer.bias -= STEP_SIZE * db
         self.layer.matrix -= STEP_SIZE * dW
-        return dW
+        return dY
  
 
 class Model:
     transformers = []
     loss = 0
+    result = []
     def __init__(self):
         self.transformers.append(Linear(Layer(28*28, 512)))
         self.transformers.append(Relu())
@@ -65,74 +73,50 @@ class Model:
     def run(self, x):
         for i in range(len(self.transformers)):
             x = self.transformers[i].forward(x)
-
-        return x
+        self.result = softmax(x)
+        return self.result
     
-    def optimize(self, y, y_true):
-        y_soft = softmax(y)
-        self.loss = cross_entropy(y_soft, y_true)
-        b = diff_cel(y_soft, y_true)
+    def optimize(self, y_true):
+        self.loss = np.average(cross_entropy(self.result, y_true))
+
+        dZ = diff_cel(self.result, y_true)
         
         for i in range(len(self.transformers)-1, -1, -1):
-            b = self.transformers[i].backward(b)
-            
+            dZ = self.transformers[i].backward(dZ)
         
-        
-        
-def diff_cel(y_soft, y_true):
-    return y_soft - y_true
+def diff_cel(y_pred, y_true):
+    return y_pred - y_true
 
-def relu(x):
-    return np.maximum(x, 0)
-
-def linear(layer: Layer, x):
-    b = layer.bias
-    a = layer.matrix
-    
-    return x @ a + b
-    
 def softmax(x):
-    return np.exp(x) / np.sum(np.exp(x))
+    return np.exp(x) / np.sum(np.exp(x), 1)[:, np.newaxis]
 
 def cross_entropy(y, y_true):
-    return -np.sum(y_true * np.log(y))
-
-def loss_fn(res, label):                                
-    return np.mean((res - label) ** 2)
- 
-def SGD(image, label, res, lr, layer: Layer):
-    g_matrix = (2 / res.size) * image.T @ (res - label)       
-    g_bias = (2 / res.size) * np.sum(res - label)         
-    layer.matrix -= lr * g_matrix.reshape(-1, 1)                  
-    layer.bias -= lr * g_bias                             
+    return -np.sum(y_true * np.log(y), 1)
 
 def train(imgs, labels):
-    iters = int(len(imgs)/BATCH_SIZE)
-    test_loss, correct = 0, 0
+    iters = int(len(imgs) / BATCH_SIZE)
+    loss_sum, correct = 0, 0
     for i in range(0, iters*BATCH_SIZE, BATCH_SIZE):
-        image = imgs[i:i+BATCH_SIZE] / 256.0
-        label = labels[i: i+BATCH_SIZE]
+        img_batch = imgs[i:i+BATCH_SIZE] / 256.0
+        label_batch = labels[i: i+BATCH_SIZE]
 
-        res = model.run(image)
+        res = model.run(img_batch)
 
-        y = np.zeros((len(label), 10), dtype=float)  # Создаем массив нулей
-        y[np.arange(len(label)), label] = 1  # Вставляем единицы по индексам
+        y = np.zeros((len(label_batch), 10), dtype=float)  # Создаем массив нулей
+        y[np.arange(len(label_batch)), label_batch] = 1  # Вставляем единицы по индексам
+        model.optimize(y)
 
-        model.optimize(y, res)
-
-
-        res = softmax(res)
         loss = model.loss
-        test_loss += loss
+        loss_sum += loss
 
-        correct += (np.argmax(res, 1) == label).sum().item()
+        correct += (np.argmax(res, 1) == label_batch).sum().item()
 
         if i % (100*BATCH_SIZE) == 0:
-            #print(res- y)
-            print(f"loss: {loss:>7f}  [{i:>5d}/{len(imgs):>5d}]")
-    return test_loss / iters, correct / len(imgs)
+            print(f"loss: {loss}  {i}/{len(imgs)}")
+            #print(f"loss: {loss:>7f}  [{i:>5d}/{len(imgs):>5d}]")
+    return loss_sum / iters, correct / len(imgs)
 
-BATCH_SIZE = 60
+
 
 imgs, labels = load_mnist('data/FashionMNIST/raw/')
 model = Model()
