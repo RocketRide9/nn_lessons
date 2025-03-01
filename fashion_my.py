@@ -48,10 +48,10 @@ class Linear(Transformer):
         self.prev = x.copy()
         return x @ self.layer.matrix + self.layer.bias
     def backward(self, x):
-        dW = np.einsum("bi,bj->ij", self.prev, x)
+        dW = np.einsum("bi,bj->ij", self.prev, x) / BATCH_SIZE
         db = np.sum(x, axis=0) / BATCH_SIZE
 
-        dY = np.sum(x @ self.layer.matrix.T, 0) / BATCH_SIZE
+        dY = x @ self.layer.matrix.T
         self.layer.bias -= STEP_SIZE * db
         self.layer.matrix -= STEP_SIZE * dW
         return dY
@@ -86,10 +86,11 @@ def diff_cel(y_pred, y_true):
     return y_pred - y_true
 
 def softmax(x):
-    return np.exp(x) / np.sum(np.exp(x), 1)[:, np.newaxis]
+    x = x - np.max(x, axis=1, keepdims=True)
+    return np.exp(x) / np.sum(np.exp(x), axis=1, keepdims=True)
 
 def cross_entropy(y, y_true):
-    return -np.sum(y_true * np.log(y), 1)
+    return -np.sum(y_true * np.log(y + 1e-9), axis=1)
 
 def train(imgs, labels):
     iters = int(len(imgs) / BATCH_SIZE)
@@ -110,8 +111,7 @@ def train(imgs, labels):
         correct += (np.argmax(res, 1) == label_batch).sum().item()
 
         if i % (100*BATCH_SIZE) == 0:
-            print(f"loss: {loss}  {i}/{len(imgs)}")
-            #print(f"loss: {loss:>7f}  [{i:>5d}/{len(imgs):>5d}]")
+            print(f"loss: {loss:>7f}  [{i:>5d}/{len(imgs):>5d}]")
     return loss_sum / iters, correct / len(imgs)
 
 
@@ -119,7 +119,7 @@ def train(imgs, labels):
 imgs, labels = load_mnist('data/FashionMNIST/raw/')
 model = Model()
 
-epochs = 5
+epochs = 30
 for epoch  in range(epochs):
     print(f"Epoch {epoch+1}\n-------------------------------")
     test_loss, correct = train(imgs, labels)
