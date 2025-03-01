@@ -48,12 +48,10 @@ class Linear(Transformer):
         self.prev = x.copy()
         return x @ self.layer.matrix + self.layer.bias
     def backward(self, x):
-        prev_exp = np.expand_dims(self.prev, axis=2)
-        x_exp = np.expand_dims(x, axis=1)
-        dW = np.sum(prev_exp @ x_exp, axis=0) / BATCH_SIZE
+        dW = np.einsum("bi,bj->ij", self.prev, x)
         db = np.sum(x, axis=0) / BATCH_SIZE
 
-        dY = x @ self.layer.matrix.T
+        dY = np.sum(x @ self.layer.matrix.T, 0) / BATCH_SIZE
         self.layer.bias -= STEP_SIZE * db
         self.layer.matrix -= STEP_SIZE * dW
         return dY
