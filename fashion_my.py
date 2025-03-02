@@ -8,10 +8,8 @@ STEP_SIZE = 0.002
 BATCH_SIZE = 60
 
 class Layer:
-    matrix = None
-    bias = None
-    matrix_grad = None
-    bias_grad = None
+    matrix: NDArray
+    bias: NDArray
     
     # матрица mxn
     # m - выходное количество нейронов
@@ -58,7 +56,7 @@ class Linear(Transformer):
  
 
 class Model:
-    transformers = []
+    transformers: list[Transformer] = []
     loss = 0
     result = []
     def __init__(self):
