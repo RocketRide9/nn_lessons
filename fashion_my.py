@@ -46,7 +46,9 @@ class Linear(Transformer):
         self.prev = x.copy()
         return x @ self.layer.matrix + self.layer.bias
     def backward(self, x):
-        dW = np.einsum("bi,bj->ij", self.prev, x) / BATCH_SIZE
+        dW = (self.prev.T @ x) / BATCH_SIZE
+        # матричное произведение работает быстрее
+        # dW = np.einsum("bi,bj->ij", self.prev, x) / BATCH_SIZE
         db = np.sum(x, axis=0) / BATCH_SIZE
 
         dY = x @ self.layer.matrix.T
@@ -57,8 +59,6 @@ class Linear(Transformer):
 
 class Model:
     transformers: list[Transformer] = []
-    loss = 0
-    result = []
     def __init__(self):
         self.transformers.append(Linear(Layer(28*28, 512)))
         self.transformers.append(Relu())
@@ -69,13 +69,11 @@ class Model:
     def run(self, x):
         for i in range(len(self.transformers)):
             x = self.transformers[i].forward(x)
-        self.result = softmax(x)
-        return self.result
+            
+        return softmax(x)
     
-    def optimize(self, y_true):
-        self.loss = np.average(cross_entropy(self.result, y_true))
-
-        dZ = diff_cel(self.result, y_true)
+    def optimize(self, y_pred, y_true):
+        dZ = diff_cel(y_pred, y_true)
         
         for i in range(len(self.transformers)-1, -1, -1):
             dZ = self.transformers[i].backward(dZ)
@@ -101,9 +99,9 @@ def train(imgs, labels):
 
         y = np.zeros((len(label_batch), 10), dtype=float)  # Создаем массив нулей
         y[np.arange(len(label_batch)), label_batch] = 1  # Вставляем единицы по индексам
-        model.optimize(y)
+        model.optimize(res, y)
 
-        loss = model.loss
+        loss = np.average(cross_entropy(res, y))
         loss_sum += loss
 
         correct += (np.argmax(res, 1) == label_batch).sum().item()
